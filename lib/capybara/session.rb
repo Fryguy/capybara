@@ -475,8 +475,8 @@ module Capybara
     #   @raise [Capybara::Driver::Base#no_such_window_error] if non-existent (e.g. closed) window was passed
     #
     # @return [Capybara::Window]         window that has been switched to
-    # @raise [Capybara::ScopeError]        if this method is invoked inside `within`,
-    #   `within_frame` or `within_window` methods
+    # @raise [Capybara::ScopeError]        if this method is invoked inside `within` or
+    #   `within_frame` methods
     # @raise [ArgumentError]               if both or neither arguments were provided
     #
     def switch_to_window(window = nil, options= {}, &window_locator)
@@ -487,9 +487,9 @@ module Capybara
         raise ArgumentError, "`switch_to_window` can take either a block or a window, not both"
       elsif !window && !block_given
         raise ArgumentError, "`switch_to_window`: either window or block should be provided"
-      elsif scopes.size > 1
+      elsif !scopes.last.nil?
         raise Capybara::ScopeError, "`switch_to_window` is not supposed to be invoked from "\
-                                    "`within`, `within_frame` or `within_window` blocks."
+                                    "`within` or `within_frame` blocks."
       end
 
       _switch_to_window(window, options, &window_locator)
@@ -516,30 +516,35 @@ module Capybara
     #   @deprecated                            Pass window or lambda instead
     #   @param [String]                        handle, name, url or title of the window
     #
-    # @raise [Capybara::ScopeError]        if this method is invoked inside `within`,
-    #   `within_frame` or `within_window` methods
+    # @raise [Capybara::ScopeError]        if this method is invoked inside `within_frame` method
     # @return                              value returned by the block
     #
     def within_window(window_or_handle)
       if window_or_handle.instance_of?(Capybara::Window)
         original = current_window
-        _switch_to_window(window_or_handle) unless original == window_or_handle
         scopes << nil
         begin
-          yield
+          _switch_to_window(window_or_handle) unless original == window_or_handle
+          begin
+            yield
+          ensure
+            _switch_to_window(original) unless original == window_or_handle
+          end
         ensure
-          @scopes.pop
-          _switch_to_window(original) unless original == window_or_handle
+          scopes.pop
         end
       elsif window_or_handle.is_a?(Proc)
         original = current_window
-        _switch_to_window { window_or_handle.call }
         scopes << nil
         begin
-          yield
+          _switch_to_window { window_or_handle.call }
+          begin
+            yield
+          ensure
+            _switch_to_window(original)
+          end
         ensure
-          @scopes.pop
-          _switch_to_window(original)
+          scopes.pop
         end
       else
         offending_line = caller.first
@@ -550,7 +555,7 @@ module Capybara
           scopes << nil
           driver.within_window(window_or_handle) { yield }
         ensure
-          @scopes.pop
+          scopes.pop
         end
       end
     end
@@ -902,6 +907,7 @@ module Capybara
       options, window = window, nil if window.is_a? Hash
 
       raise Capybara::ScopeError, "Window cannot be switched inside a `within_frame` block" if scopes.include?(:frame)
+      raise Capybara::ScopeError, "Window cannot be switch inside a `within` block" unless scopes.last.nil?
 
       if window
         driver.switch_to_window(window.handle)

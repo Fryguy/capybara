@@ -90,13 +90,15 @@ Capybara::SpecHelper.spec '#switch_to_window', requires: [:windows] do
       end.to raise_error(Capybara::ScopeError, /`switch_to_window` is not supposed to be invoked from/)
     end
 
-    it "should raise error when invoked inside `within_window` as it's nonsense" do
-      window = (@session.windows - [@window]).first
-      expect do
-        @session.within_window window do
-          @session.switch_to_window { @session.title == 'With Windows' }
-        end
-      end.to raise_error(Capybara::ScopeError, /`switch_to_window` is not supposed to be invoked from/)
+    it "should allow to be called inside within_window and within_window will still return to original" do
+      other_windows = (@session.windows - [@window])
+      expect(@session.current_window).to eq(@window)
+      @session.within_window other_windows[0] do
+        expect(@session.current_window).to eq(other_windows[0])
+        @session.switch_to_window other_windows[1]
+        expect(@session.current_window).to eq(other_windows[1])
+      end
+      expect(@session.current_window).to eq(@window)
     end
 
     it "should raise error if window matching block wasn't found" do
